@@ -617,9 +617,46 @@ class GranularStore {
                       ((conv.visitor_ip || existing?.visitor_ip) && s.ip_address === (conv.visitor_ip || existing?.visitor_ip))
                     );
 
+    let resolvedVisitorName = conv.visitor_name || existing?.visitor_name;
+    let resolvedVisitorEmail = conv.visitor_email || existing?.visitor_email;
+    let resolvedVisitorPhone = conv.visitor_phone || existing?.visitor_phone;
+
+    // Auto-extract visitor name, email, phone from form_data if still 'Visitor' or missing
+    if (!resolvedVisitorName || resolvedVisitorName === 'Visitor' || resolvedVisitorName === 'Live Visitor' || resolvedVisitorName === 'Customer') {
+      for (const m of mergedMessages) {
+        if ((m as any).form_data?.name && typeof (m as any).form_data.name === 'string' && (m as any).form_data.name.trim()) {
+          resolvedVisitorName = (m as any).form_data.name.trim();
+          break;
+        }
+        if (m.sender_type === 'visitor' && m.sender_name && m.sender_name !== 'Visitor' && m.sender_name !== 'Live Visitor' && m.sender_name !== 'You') {
+          resolvedVisitorName = m.sender_name.trim();
+          break;
+        }
+      }
+    }
+    if (!resolvedVisitorEmail) {
+      for (const m of mergedMessages) {
+        if ((m as any).form_data?.email && typeof (m as any).form_data.email === 'string' && (m as any).form_data.email.trim()) {
+          resolvedVisitorEmail = (m as any).form_data.email.trim();
+          break;
+        }
+      }
+    }
+    if (!resolvedVisitorPhone) {
+      for (const m of mergedMessages) {
+        if ((m as any).form_data?.phone && typeof (m as any).form_data.phone === 'string' && (m as any).form_data.phone.trim()) {
+          resolvedVisitorPhone = (m as any).form_data.phone.trim();
+          break;
+        }
+      }
+    }
+
     const mergedConv: StoreConversation = {
       ...(existing || {}),
       ...conv,
+      visitor_name: resolvedVisitorName || 'Visitor',
+      visitor_email: resolvedVisitorEmail,
+      visitor_phone: resolvedVisitorPhone,
       visitor: session || conv.visitor || existing?.visitor,
       visitor_ip: conv.visitor_ip || existing?.visitor_ip || session?.ip_address,
       mode: isClaimed || conv.mode === 'human' || existing?.mode === 'human' ? 'human' : 'ai',
@@ -1012,8 +1049,44 @@ class GranularStore {
       const lastUpdatedMs = new Date(c.updated_at || c.created_at || 0).getTime();
       const isStalePending = isUnclaimedPending && (now - lastUpdatedMs > 90 * 1000) && (!session || !isSessionActive(session));
 
+      let effName = c.visitor_name;
+      let effEmail = c.visitor_email;
+      let effPhone = c.visitor_phone;
+
+      if (!effName || effName === 'Visitor' || effName === 'Live Visitor' || effName === 'Customer') {
+        for (const m of (c.messages || [])) {
+          if ((m as any).form_data?.name && typeof (m as any).form_data.name === 'string' && (m as any).form_data.name.trim()) {
+            effName = (m as any).form_data.name.trim();
+            break;
+          }
+          if (m.sender_type === 'visitor' && m.sender_name && m.sender_name !== 'Visitor' && m.sender_name !== 'Live Visitor' && m.sender_name !== 'You') {
+            effName = m.sender_name.trim();
+            break;
+          }
+        }
+      }
+      if (!effEmail) {
+        for (const m of (c.messages || [])) {
+          if ((m as any).form_data?.email && typeof (m as any).form_data.email === 'string' && (m as any).form_data.email.trim()) {
+            effEmail = (m as any).form_data.email.trim();
+            break;
+          }
+        }
+      }
+      if (!effPhone) {
+        for (const m of (c.messages || [])) {
+          if ((m as any).form_data?.phone && typeof (m as any).form_data.phone === 'string' && (m as any).form_data.phone.trim()) {
+            effPhone = (m as any).form_data.phone.trim();
+            break;
+          }
+        }
+      }
+
       return {
         ...c,
+        visitor_name: effName || 'Visitor',
+        visitor_email: effEmail,
+        visitor_phone: effPhone,
         mode: isStalePending ? 'ai' : c.mode,
         status: isStalePending ? 'active' : c.status,
         visitor_ip: c.visitor_ip || session?.ip_address,

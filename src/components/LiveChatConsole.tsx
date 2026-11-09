@@ -385,11 +385,52 @@ export const LiveChatConsole: React.FC<LiveChatConsoleProps> = ({
     return getLatestTime(b) - getLatestTime(a);
   });
 
+  // Helper to reliably extract visitor identity, recovering name from form_data if marked 'Visitor'
+  const getEffectiveVisitorName = (c?: ChatSession | null): string => {
+    if (!c) return 'Visitor';
+    if (c.visitor_name && c.visitor_name.trim() && c.visitor_name !== 'Visitor' && c.visitor_name !== 'Live Visitor' && c.visitor_name !== 'Customer') {
+      return c.visitor_name.trim();
+    }
+    for (const m of (c.messages || [])) {
+      if ((m as any)?.form_data?.name && typeof (m as any).form_data.name === 'string' && (m as any).form_data.name.trim()) {
+        return (m as any).form_data.name.trim();
+      }
+      if (m.sender_type === 'visitor' && m.sender_name && m.sender_name !== 'Visitor' && m.sender_name !== 'Live Visitor' && m.sender_name !== 'You' && m.sender_name !== 'Customer') {
+        return m.sender_name.trim();
+      }
+    }
+    return c.visitor_name || 'Visitor';
+  };
+
+  const getEffectiveVisitorEmail = (c?: ChatSession | null): string | undefined => {
+    if (!c) return undefined;
+    if (c.visitor_email && c.visitor_email.trim()) return c.visitor_email.trim();
+    for (const m of (c.messages || [])) {
+      if ((m as any)?.form_data?.email && typeof (m as any).form_data.email === 'string' && (m as any).form_data.email.trim()) {
+        return (m as any).form_data.email.trim();
+      }
+    }
+    return undefined;
+  };
+
+  const getEffectiveVisitorPhone = (c?: ChatSession | null): string | undefined => {
+    if (!c) return undefined;
+    if (c.visitor_phone && c.visitor_phone.trim()) return c.visitor_phone.trim();
+    for (const m of (c.messages || [])) {
+      if ((m as any)?.form_data?.phone && typeof (m as any).form_data.phone === 'string' && (m as any).form_data.phone.trim()) {
+        return (m as any).form_data.phone.trim();
+      }
+    }
+    return undefined;
+  };
+
   // Helper to reliably identify visitor identity across multiple chats (email -> visitor_id -> visitor_name)
   const getVisitorKey = (c: ChatSession): string => {
-    if (c.visitor_email && c.visitor_email.trim()) return `email:${c.visitor_email.trim().toLowerCase()}`;
+    const email = getEffectiveVisitorEmail(c);
+    if (email) return `email:${email.trim().toLowerCase()}`;
     if (c.visitor_id && c.visitor_id.trim()) return `vis:${c.visitor_id.trim().toLowerCase()}`;
-    if (c.visitor_name && c.visitor_name.trim() && c.visitor_name !== 'Visitor' && c.visitor_name !== 'System') return `name:${c.visitor_name.trim().toLowerCase()}`;
+    const name = getEffectiveVisitorName(c);
+    if (name && name.trim() && name !== 'Visitor' && name !== 'Live Visitor' && name !== 'System') return `name:${name.trim().toLowerCase()}`;
     return `id:${c.id}`;
   };
 
@@ -1439,9 +1480,9 @@ const sortTimelineMessages = <T extends { id?: string; seq?: number; created_at?
                 )}
               </div>
               <h4 className="text-xs font-bold text-white flex items-center space-x-1.5 truncate">
-                <span className="truncate">{conv.visitor_name}</span>
-                {conv.visitor_email && (
-                  <span className="text-[10px] font-normal text-dark-muted truncate">({conv.visitor_email})</span>
+                <span className="truncate">{getEffectiveVisitorName(conv)}</span>
+                {getEffectiveVisitorEmail(conv) && (
+                  <span className="text-[10px] font-normal text-dark-muted truncate">({getEffectiveVisitorEmail(conv)})</span>
                 )}
               </h4>
               <p className="text-[11px] text-dark-muted truncate max-w-[170px] mt-0.5">
@@ -1501,7 +1542,7 @@ const sortTimelineMessages = <T extends { id?: string; seq?: number; created_at?
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  handleDeleteChat(conv.id, conv.visitor_name || 'Visitor');
+                  handleDeleteChat(conv.id, getEffectiveVisitorName(conv));
                 }}
                 title="Delete Chat"
                 className="p-1 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/20 transition-all opacity-80 hover:opacity-100 cursor-pointer"
@@ -1928,7 +1969,7 @@ const sortTimelineMessages = <T extends { id?: string; seq?: number; created_at?
 
                     {(isAdmin || isClaimedByMe) && (
                       <button
-                        onClick={() => handleDeleteChat(selectedConv.id, selectedConv.visitor_name || 'Visitor')}
+                        onClick={() => handleDeleteChat(selectedConv.id, getEffectiveVisitorName(selectedConv))}
                         title="Delete Conversation"
                         className="p-1 px-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-[11px] font-semibold flex items-center space-x-1 transition-all cursor-pointer"
                       >
@@ -2037,7 +2078,11 @@ const sortTimelineMessages = <T extends { id?: string; seq?: number; created_at?
                       >
                         <div className="flex items-center space-x-1.5 mb-1 px-1">
                           <span className="text-[10px] font-semibold text-dark-muted">
-                            {isVisitor ? selectedConv.visitor_name : (
+                            {isVisitor ? (
+                              m.sender_name && m.sender_name !== 'Visitor' && m.sender_name !== 'Live Visitor' && m.sender_name !== 'You'
+                                ? m.sender_name
+                                : getEffectiveVisitorName(selectedConv)
+                            ) : (
                               (m as any).sender_pseudo_name && (m as any).sender_real_name && (m as any).sender_pseudo_name !== (m as any).sender_real_name
                                 ? `${(m as any).sender_pseudo_name} (Real: ${(m as any).sender_real_name})`
                                 : m.sender_name
@@ -2116,7 +2161,7 @@ const sortTimelineMessages = <T extends { id?: string; seq?: number; created_at?
                     <div className="space-y-1.5 max-w-sm">
                       <h3 className="text-base font-bold text-white tracking-tight">Human Support Requested</h3>
                       <p className="text-xs text-dark-muted leading-relaxed">
-                        {selectedConv.visitor_name || 'Customer'} requested to speak with a real person. Claim this conversation to verify your details and start chatting.
+                        {getEffectiveVisitorName(selectedConv)} requested to speak with a real person. Claim this conversation to verify your details and start chatting.
                       </p>
                     </div>
                     <button
@@ -2136,7 +2181,7 @@ const sortTimelineMessages = <T extends { id?: string; seq?: number; created_at?
                 <div className="px-4 py-2 bg-blue-950/60 border-t border-blue-900/50 flex items-start space-x-2 text-[11px] text-blue-300 shrink-0">
                   <Eye className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5 animate-pulse" />
                   <div className="flex-1 min-w-0">
-                    <span className="font-semibold text-blue-300 block mb-0.5">{selectedConv.visitor_name} is typing (Live Preview):</span>
+                    <span className="font-semibold text-blue-300 block mb-0.5">{getEffectiveVisitorName(selectedConv)} is typing (Live Preview):</span>
                     <div className="max-h-24 overflow-y-auto whitespace-pre-wrap break-words text-white italic font-sans bg-blue-900/20 px-2.5 py-1.5 rounded-lg border border-blue-800/40 w-full text-xs">
                       {liveTypingPreview}
                       <div ref={typingPreviewEndRef} />
@@ -2295,30 +2340,44 @@ const sortTimelineMessages = <T extends { id?: string; seq?: number; created_at?
                             <div className="text-[10px] text-dark-muted font-mono">{visitorObj?.ip_address || selectedConv.visitor_ip || 'Live Online'}</div>
                           </div>
                         </div>
-                        {(selectedConv.visitor_name || visitorObj?.visitor_name || visitorObj?.name) && (
-                          <div className="pt-1.5 border-t border-dark-border/60 text-[10px] text-dark-muted flex justify-between items-center">
-                            <span>Name: </span>
-                            <span className="text-white font-medium truncate ml-2 text-right">
-                              {selectedConv.visitor_name || visitorObj?.visitor_name || visitorObj?.name}
-                            </span>
-                          </div>
-                        )}
-                        {(selectedConv.visitor_email || visitorObj?.visitor_email || visitorObj?.email) && (
-                          <div className="pt-1.5 border-t border-dark-border/60 text-[10px] text-dark-muted flex justify-between items-center">
-                            <span>Email: </span>
-                            <span className="text-white font-medium truncate ml-2 text-right">
-                              {selectedConv.visitor_email || visitorObj?.visitor_email || visitorObj?.email}
-                            </span>
-                          </div>
-                        )}
-                        {(selectedConv.visitor_phone || visitorObj?.visitor_phone || visitorObj?.phone) && (
-                          <div className="pt-1.5 border-t border-dark-border/60 text-[10px] text-dark-muted flex justify-between items-center">
-                            <span>Phone: </span>
-                            <span className="text-white font-medium truncate ml-2 text-right">
-                              {selectedConv.visitor_phone || visitorObj?.visitor_phone || visitorObj?.phone}
-                            </span>
-                          </div>
-                        )}
+                        {(() => {
+                          const effectiveName = getEffectiveVisitorName(selectedConv);
+                          const isGeneric = !effectiveName || effectiveName === 'Visitor' || effectiveName === 'Live Visitor' || effectiveName === 'Customer';
+                          const displayName = !isGeneric ? effectiveName : (visitorObj?.visitor_name && visitorObj.visitor_name !== 'Visitor' ? visitorObj.visitor_name : (visitorObj?.name && visitorObj.name !== 'Visitor' ? visitorObj.name : null));
+                          if (!displayName) return null;
+                          return (
+                            <div className="pt-1.5 border-t border-dark-border/60 text-[10px] text-dark-muted flex justify-between items-center">
+                              <span>Name: </span>
+                              <span className="text-white font-medium truncate ml-2 text-right">
+                                {displayName}
+                              </span>
+                            </div>
+                          );
+                        })()}
+                        {(() => {
+                          const effectiveEmail = getEffectiveVisitorEmail(selectedConv) || visitorObj?.visitor_email || (visitorObj as any)?.email;
+                          if (!effectiveEmail) return null;
+                          return (
+                            <div className="pt-1.5 border-t border-dark-border/60 text-[10px] text-dark-muted flex justify-between items-center">
+                              <span>Email: </span>
+                              <span className="text-white font-medium truncate ml-2 text-right">
+                                {effectiveEmail}
+                              </span>
+                            </div>
+                          );
+                        })()}
+                        {(() => {
+                          const effectivePhone = getEffectiveVisitorPhone(selectedConv) || visitorObj?.visitor_phone || (visitorObj as any)?.phone;
+                          if (!effectivePhone) return null;
+                          return (
+                            <div className="pt-1.5 border-t border-dark-border/60 text-[10px] text-dark-muted flex justify-between items-center">
+                              <span>Phone: </span>
+                              <span className="text-white font-medium truncate ml-2 text-right">
+                                {effectivePhone}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
 
@@ -2386,7 +2445,7 @@ const sortTimelineMessages = <T extends { id?: string; seq?: number; created_at?
         onConfirm={handleConfirmClaim}
         defaultName={currentAgent.full_name}
         defaultEmail={currentAgent.email}
-        visitorName={selectedConv?.visitor_name || 'Visitor'}
+        visitorName={getEffectiveVisitorName(selectedConv)}
       />
 
       {/* Transfer Chat Modal */}
@@ -2407,7 +2466,7 @@ const sortTimelineMessages = <T extends { id?: string; seq?: number; created_at?
                     </span>
                   </h3>
                   <p className="text-[11px] text-dark-muted mt-0.5">
-                    Reassign <span className="text-white font-semibold">{selectedConv?.visitor_name || 'Visitor'}</span> to an Admin or Support Agent
+                    Reassign <span className="text-white font-semibold">{getEffectiveVisitorName(selectedConv)}</span> to an Admin or Support Agent
                   </p>
                 </div>
               </div>

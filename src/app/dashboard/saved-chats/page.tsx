@@ -36,6 +36,22 @@ interface SavedConversation {
   messages: SavedMessage[];
 }
 
+const getEffectiveVisitorName = (c?: any): string => {
+  if (!c) return 'Anonymous Visitor';
+  if (c.visitor_name && c.visitor_name.trim() && c.visitor_name !== 'Visitor' && c.visitor_name !== 'Live Visitor' && c.visitor_name !== 'Anonymous Visitor') {
+    return c.visitor_name.trim();
+  }
+  for (const m of (c.messages || [])) {
+    if (m?.form_data?.name && typeof m.form_data.name === 'string' && m.form_data.name.trim()) {
+      return m.form_data.name.trim();
+    }
+    if (m?.sender_type === 'visitor' && m?.sender_name && m?.sender_name !== 'Visitor' && m?.sender_name !== 'Live Visitor' && m?.sender_name !== 'You') {
+      return m.sender_name.trim();
+    }
+  }
+  return c.visitor_name || 'Anonymous Visitor';
+};
+
 export default function AllChatsSavePage() {
   const { websites: contextWebsites, isWebsitePermitted } = useLiveSync();
   const [conversations, setConversations] = useState<SavedConversation[]>([]);
@@ -250,7 +266,7 @@ export default function AllChatsSavePage() {
       `=========================================================`,
       `TEALS CRM - SAVED CHAT TRANSCRIPT`,
       `Website: ${getWebsiteConfig(selectedConversation.property_slug).name}`,
-      `Visitor: ${selectedConversation.visitor_name || 'Anonymous Visitor'} (${selectedConversation.visitor_email || 'No email'})`,
+      `Visitor: ${getEffectiveVisitorName(selectedConversation)} (${selectedConversation.visitor_email || 'No email'})`,
       `Visitor IP: ${selectedConversation.visitor_ip || 'Unknown'}`,
       `Mode: ${selectedConversation.mode === 'human' ? 'Human Agent (' + (selectedConversation.assigned_agent_name || 'Agent') + ')' : 'AI Automated Support'}`,
       `Date: ${new Date(selectedConversation.created_at).toLocaleString()}`,
@@ -260,7 +276,7 @@ export default function AllChatsSavePage() {
 
     (selectedConversation.messages || []).forEach(m => {
       const time = new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const sender = m.sender_type === 'visitor' ? selectedConversation.visitor_name || 'Visitor' :
+      const sender = m.sender_type === 'visitor' ? getEffectiveVisitorName(selectedConversation) :
                      m.sender_type === 'agent' ? m.sender_name || 'Human Agent' :
                      m.sender_type === 'ai' ? 'AI Assistant' : 'System';
       lines.push(`[${time}] ${sender}: ${m.content}`);
@@ -333,7 +349,7 @@ export default function AllChatsSavePage() {
           <div className="min-w-0">
             <div className="flex items-center space-x-1.5">
               <h4 className="text-xs font-bold text-white truncate">
-                {conv.visitor_name || 'Anonymous Visitor'}
+                {getEffectiveVisitorName(conv)}
               </h4>
               <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border flex-shrink-0 ${
                 isChat2Card
@@ -628,7 +644,7 @@ export default function AllChatsSavePage() {
                     </div>
                     <div className="min-w-0">
                       <h3 className="text-xs font-bold text-white truncate">
-                        {selectedConversation.visitor_name || 'Anonymous Visitor'}
+                        {getEffectiveVisitorName(selectedConversation)}
                       </h3>
                       <div className="flex items-center space-x-1.5 text-[10px] text-dark-muted truncate font-mono">
                         <span>IP: {selectedConversation.visitor_ip || 'Hidden'}</span>
@@ -702,7 +718,11 @@ export default function AllChatsSavePage() {
                         <div className="flex items-center space-x-1.5 text-[9px] text-dark-muted mb-0.5 px-1">
                           <span className="font-bold text-white">
                             {isVisitor
-                              ? (selectedConversation.visitor_name || 'Visitor')
+                              ? (
+                                  m.sender_name && m.sender_name !== 'Visitor' && m.sender_name !== 'Live Visitor' && m.sender_name !== 'You'
+                                    ? m.sender_name
+                                    : getEffectiveVisitorName(selectedConversation)
+                                )
                               : isAgent
                               ? (m.sender_name || selectedConversation.assigned_agent_name || 'Live Agent')
                               : 'AI Assistant'}

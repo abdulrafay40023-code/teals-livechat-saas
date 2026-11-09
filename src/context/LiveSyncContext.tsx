@@ -736,6 +736,9 @@ export const LiveSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             if ((p.messages?.length || 0) !== (apiConv.messages?.length || 0)) return true;
             if (p.mode !== apiConv.mode || p.status !== apiConv.status) return true;
             if (p.assigned_agent_id !== apiConv.assigned_agent_id) return true;
+            if (p.visitor_name !== apiConv.visitor_name && apiConv.visitor_name && apiConv.visitor_name !== 'Visitor') return true;
+            if (p.visitor_email !== apiConv.visitor_email && apiConv.visitor_email) return true;
+            if (p.visitor_phone !== apiConv.visitor_phone && apiConv.visitor_phone) return true;
             const pLast = p.messages?.[p.messages.length - 1]?.id;
             const aLast = apiConv.messages?.[apiConv.messages.length - 1]?.id;
             return pLast !== aLast;
@@ -794,13 +797,50 @@ export const LiveSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             (apiConv.visitor_ip && v.ip_address === apiConv.visitor_ip)
           );
 
+          let resolvedName = apiConv.visitor_name;
+          if (!resolvedName || resolvedName === 'Visitor' || resolvedName === 'Live Visitor' || resolvedName === 'Customer') {
+            for (const m of (apiConv.messages || prevConv.messages || [])) {
+              if ((m as any)?.form_data?.name && typeof (m as any).form_data.name === 'string' && (m as any).form_data.name.trim()) {
+                resolvedName = (m as any).form_data.name.trim();
+                break;
+              }
+              if (m.sender_type === 'visitor' && m.sender_name && m.sender_name !== 'Visitor' && m.sender_name !== 'Live Visitor' && m.sender_name !== 'You') {
+                resolvedName = m.sender_name.trim();
+                break;
+              }
+            }
+          }
+          if (!resolvedName || resolvedName === 'Visitor' || resolvedName === 'Live Visitor') {
+            resolvedName = prevConv.visitor_name;
+          }
+
+          let resolvedEmail = apiConv.visitor_email || prevConv.visitor_email;
+          if (!resolvedEmail) {
+            for (const m of (apiConv.messages || prevConv.messages || [])) {
+              if ((m as any)?.form_data?.email && typeof (m as any).form_data.email === 'string' && (m as any).form_data.email.trim()) {
+                resolvedEmail = (m as any).form_data.email.trim();
+                break;
+              }
+            }
+          }
+
+          let resolvedPhone = apiConv.visitor_phone || prevConv.visitor_phone;
+          if (!resolvedPhone) {
+            for (const m of (apiConv.messages || prevConv.messages || [])) {
+              if ((m as any)?.form_data?.phone && typeof (m as any).form_data.phone === 'string' && (m as any).form_data.phone.trim()) {
+                resolvedPhone = (m as any).form_data.phone.trim();
+                break;
+              }
+            }
+          }
+
           return {
             ...prevConv,
             ...apiConv,
             visitor: matchedVisitor,
-            visitor_name: apiConv.visitor_name || prevConv.visitor_name,
-            visitor_email: apiConv.visitor_email || prevConv.visitor_email,
-            visitor_phone: apiConv.visitor_phone || prevConv.visitor_phone,
+            visitor_name: resolvedName || 'Visitor',
+            visitor_email: resolvedEmail,
+            visitor_phone: resolvedPhone,
             mode: effectiveMode,
             status: effectiveStatus,
             assigned_agent_id: effectiveAssignedId,
@@ -1491,6 +1531,69 @@ export const LiveSyncProvider: React.FC<{ children: React.ReactNode }> = ({ chil
               return next;
             });
             refreshSync();
+          }
+        } catch {}
+      })
+      .on('broadcast', { event: 'conversation_updated' }, (payload: unknown) => {
+        try {
+          const raw = (payload as Record<string, unknown>)?.payload || payload;
+          const conversation = (raw as Record<string, unknown>)?.conversation as LiveConversation;
+          if (conversation && conversation.id) {
+            setConversations(prev => {
+              const idx = prev.findIndex(c => c.id === conversation.id);
+              let resolvedName = conversation.visitor_name;
+              if (!resolvedName || resolvedName === 'Visitor' || resolvedName === 'Live Visitor' || resolvedName === 'Customer') {
+                for (const m of (conversation.messages || (idx >= 0 ? prev[idx].messages : []) || [])) {
+                  if ((m as any)?.form_data?.name && typeof (m as any).form_data.name === 'string' && (m as any).form_data.name.trim()) {
+                    resolvedName = (m as any).form_data.name.trim();
+                    break;
+                  }
+                  if (m.sender_type === 'visitor' && m.sender_name && m.sender_name !== 'Visitor' && m.sender_name !== 'Live Visitor' && m.sender_name !== 'You') {
+                    resolvedName = m.sender_name.trim();
+                    break;
+                  }
+                }
+              }
+
+              let resolvedEmail = conversation.visitor_email || (idx >= 0 ? prev[idx].visitor_email : undefined);
+              if (!resolvedEmail) {
+                for (const m of (conversation.messages || (idx >= 0 ? prev[idx].messages : []) || [])) {
+                  if ((m as any)?.form_data?.email && typeof (m as any).form_data.email === 'string' && (m as any).form_data.email.trim()) {
+                    resolvedEmail = (m as any).form_data.email.trim();
+                    break;
+                  }
+                }
+              }
+
+              let resolvedPhone = conversation.visitor_phone || (idx >= 0 ? prev[idx].visitor_phone : undefined);
+              if (!resolvedPhone) {
+                for (const m of (conversation.messages || (idx >= 0 ? prev[idx].messages : []) || [])) {
+                  if ((m as any)?.form_data?.phone && typeof (m as any).form_data.phone === 'string' && (m as any).form_data.phone.trim()) {
+                    resolvedPhone = (m as any).form_data.phone.trim();
+                    break;
+                  }
+                }
+              }
+
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = {
+                  ...next[idx],
+                  ...conversation,
+                  visitor_name: resolvedName || next[idx].visitor_name || 'Visitor',
+                  visitor_email: resolvedEmail,
+                  visitor_phone: resolvedPhone,
+                  messages: conversation.messages && conversation.messages.length > 0 ? conversation.messages : next[idx].messages,
+                };
+                return next;
+              }
+              return [{
+                ...conversation,
+                visitor_name: resolvedName || 'Visitor',
+                visitor_email: resolvedEmail,
+                visitor_phone: resolvedPhone,
+              }, ...prev];
+            });
           }
         } catch {}
       })
