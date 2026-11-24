@@ -71,6 +71,16 @@ export const PROCESS_PATTERNS = [
   /\b(how it works|how does it work|process|steps|procedure|kaisay kaam karta hai|kese kaam hota hai|operational roadmap|roadmap)\b/i
 ];
 
+export const SPECIFIC_SERVICE_REGEX = /\b(amazon|fba|fbm|wholesale|private label|shopify|walmart|tiktok|tik tok|etsy|ebay|temu|dropship|dropshipping|ppc|listing|audit|ebook|e-book|ghostwriting|ghostwriter|editing|proofreading|cover design|audiobook|trailer|patch|patches|embroidered|chenille|pvc|woven|apparel|promotional)\b/i;
+
+export function hasSpecificServiceMention(text: string): boolean {
+  const clean = (text || '').toLowerCase().trim();
+  if (/\b(all services|other services|what other services|list all services|tell me all services)\b/i.test(clean)) {
+    return false;
+  }
+  return SPECIFIC_SERVICE_REGEX.test(clean);
+}
+
 export function isPricingOrBookingRequested(text: string): boolean {
   const clean = (text || '').toLowerCase().trim();
   return PRICING_PATTERNS.some(p => p.test(clean));
@@ -78,6 +88,7 @@ export function isPricingOrBookingRequested(text: string): boolean {
 
 export function isServicesRequested(text: string): boolean {
   const clean = (text || '').toLowerCase().trim();
+  if (hasSpecificServiceMention(clean)) return false;
   return SERVICES_PATTERNS.some(p => p.test(clean));
 }
 
@@ -255,6 +266,76 @@ export function buildProcessMessage(siteConfig: any): AIChatMessageItem {
   };
 }
 
+export function buildSpecificServiceMessage(rawText: string, siteConfig: any, cleanName: string | null): AIChatMessageItem | null {
+  const lower = (rawText || '').toLowerCase();
+  const greeting = cleanName ? `Hey ${cleanName}! ` : '';
+
+  if (/\b(amazon|fba|fbm|wholesale|private label)\b/i.test(lower)) {
+    return {
+      text: sanitizeEmDashes(`${greeting}Great choice! With our Amazon FBA Automation and Account Management service at ${siteConfig.name}, our specialist team handles the entire process for you end-to-end. This includes winning high-margin product research, verified US and global supplier sourcing, Amazon Seller Central setup, SEO-optimized product listings, profitable PPC ad campaigns, and daily FBA inventory and fulfillment management.\n\nAre you looking to launch a brand-new Amazon FBA store from scratch, or scale an existing seller account? You can also ask about pricing or book a free 1-on-1 Zoom strategy call anytime!`),
+      isForm: false
+    };
+  }
+
+  if (/\b(shopify|dropship|dropshipping)\b/i.test(lower)) {
+    return {
+      text: sanitizeEmDashes(`${greeting}We would love to help you with Shopify! Our Shopify Dropshipping and Store Automation team builds high-converting custom storefronts, researches trending high-margin products, connects verified fast-shipping suppliers, and runs targeted marketing campaigns while handling daily order fulfillment for you.\n\nAre you starting a new Shopify brand from scratch, or looking to automate and scale an existing store?`),
+      isForm: false
+    };
+  }
+
+  if (/\b(walmart)\b/i.test(lower)) {
+    return {
+      text: sanitizeEmDashes(`${greeting}Our Walmart Marketplace Automation service covers everything from Walmart Seller Account approval and WFS (Walmart Fulfillment Services) setup to profitable product sourcing, listing optimization, and daily order and account health management.\n\nDo you already have a Walmart Seller account, or would you like our team to help you get approved and launched from scratch?`),
+      isForm: false
+    };
+  }
+
+  if (/\b(tiktok|tik tok)\b/i.test(lower)) {
+    return {
+      text: sanitizeEmDashes(`${greeting}With our TikTok Shop Automation service, we set up your TikTok Seller Store, source viral high-converting products, manage affiliate and creator outreach, optimize shop listings, and handle daily fulfillment so you can capture fast social commerce sales hands-off.\n\nAre you looking to launch a new TikTok Shop or scale an existing brand?`),
+      isForm: false
+    };
+  }
+
+  if (/\b(etsy)\b/i.test(lower)) {
+    return {
+      text: sanitizeEmDashes(`${greeting}Our Etsy Store Automation service handles niche product research, custom print-on-demand or handmade supplier sourcing, shop branding, SEO listing creation, and daily order fulfillment to build steady automated revenue.\n\nAre you looking to launch a new Etsy shop or grow an existing one?`),
+      isForm: false
+    };
+  }
+
+  if (/\b(ebay|temu)\b/i.test(lower)) {
+    return {
+      text: sanitizeEmDashes(`${greeting}With our eBay and Marketplace Automation service, we handle high-demand product research, verified supplier sourcing, optimized listings, pricing automation, customer service, and daily order fulfillment to scale your store smoothly.\n\nAre you starting a brand-new store or looking to scale an existing account?`),
+      isForm: false
+    };
+  }
+
+  if (/\b(ebook|e-book|ghostwriting|ghostwriter|editing|proofreading|cover design|audiobook|trailer|publishing)\b/i.test(lower)) {
+    return {
+      text: sanitizeEmDashes(`${greeting}We provide complete end-to-end E-book and Book Publishing services, including professional ghostwriting, developmental editing and proofreading, custom book cover design, interior formatting, audiobook production, and global distribution on Amazon KDP and major platforms.\n\nDo you already have a manuscript or draft ready, or are you starting from a new book idea?`),
+      isForm: false
+    };
+  }
+
+  if (/\b(ppc|listing|audit)\b/i.test(lower)) {
+    return {
+      text: sanitizeEmDashes(`${greeting}Our E-commerce PPC Advertising and Listing Optimization specialists conduct deep keyword research, A+ content and SEO copywriting, and data-driven ad campaign management to lower your ACoS and boost organic rankings and sales.\n\nWhich marketplace is your store currently on, and would you like a free audit from our specialist team?`),
+      isForm: false
+    };
+  }
+
+  if (/\b(patch|patches|embroidered|chenille|pvc|woven|apparel|promotional)\b/i.test(lower)) {
+    return {
+      text: sanitizeEmDashes(`${greeting}At ${siteConfig.name}, we craft custom embroidered, chenille, PVC, leather, and woven patches as well as custom apparel and promotional merchandise with free digital artwork proofs, flexible order quantities, and fast shipping.\n\nWhat type of patch or custom item are you looking to create, and roughly how many pieces do you need?`),
+      isForm: false
+    };
+  }
+
+  return null;
+}
+
 export async function generateAIChatResponse({
   messages,
   visitorName,
@@ -317,10 +398,17 @@ export async function generateAIChatResponse({
 
   // 5. Multi-Topic / Multi-Intent Detection & Sequence Extraction
   // Find where each intent starts in the user's message so we can answer them in the EXACT order the user asked!
-  const detected: Array<{ type: 'services' | 'pricing' | 'contact' | 'location' | 'process'; index: number }> = [];
+  const hasSpecificService = hasSpecificServiceMention(lastMsg);
+  const specificServiceMsg = hasSpecificService ? buildSpecificServiceMessage(lastMsg, siteConfig, cleanName) : null;
+  const detected: Array<{ type: 'services' | 'specific_service' | 'pricing' | 'contact' | 'location' | 'process'; index: number }> = [];
 
-  const sIdx = findFirstPatternIndex(lastMsg, SERVICES_PATTERNS);
-  if (sIdx !== null) detected.push({ type: 'services', index: sIdx });
+  if (hasSpecificService && specificServiceMsg) {
+    const specIdx = findFirstPatternIndex(lastMsg, [SPECIFIC_SERVICE_REGEX]);
+    if (specIdx !== null) detected.push({ type: 'specific_service', index: specIdx });
+  } else {
+    const sIdx = findFirstPatternIndex(lastMsg, SERVICES_PATTERNS);
+    if (sIdx !== null) detected.push({ type: 'services', index: sIdx });
+  }
 
   const pIdx = findFirstPatternIndex(lastMsg, PRICING_PATTERNS);
   if (pIdx !== null) detected.push({ type: 'pricing', index: pIdx });
@@ -337,12 +425,13 @@ export async function generateAIChatResponse({
   // Strictly sort by index ascending so answers match the user's question sequence!
   detected.sort((a, b) => a.index - b.index);
 
-  // If user asked MULTIPLE intents (e.g. Services AND Cost, or Cost AND Services, or with Location/Contact):
+  // If user asked MULTIPLE intents (e.g. Services AND Cost, or Specific Service AND Cost, or with Location/Contact):
   // Return separate distinct messages in that exact user order!
   if (detected.length >= 2) {
     const multiMsgs: AIChatMessageItem[] = [];
     for (const item of detected) {
-      if (item.type === 'services') multiMsgs.push(buildServicesMessage(siteConfig, cleanName));
+      if (item.type === 'specific_service' && specificServiceMsg) multiMsgs.push(specificServiceMsg);
+      else if (item.type === 'services') multiMsgs.push(buildServicesMessage(siteConfig, cleanName));
       else if (item.type === 'pricing') multiMsgs.push(buildPricingMessage(siteConfig, cleanName));
       else if (item.type === 'location') multiMsgs.push(buildLocationMessage(siteConfig));
       else if (item.type === 'contact') multiMsgs.push(buildContactMessage(siteConfig));
@@ -481,8 +570,8 @@ ${isPricingOrBookingRequested(lastMsg) ? `\nCRITICAL PRICING & QUOTATION INSTRUC
 
   // Ultra-fast Gemini models ordered by speed, stability, and availability
   const modelsToTry = [
+    'gemini-3.6-flash',
     'gemini-3.5-flash',
-    'gemini-3.1-flash-lite',
     'gemini-3.5-flash-lite',
     'gemini-flash-latest'
   ];
@@ -619,7 +708,8 @@ ${isPricingOrBookingRequested(lastMsg) ? `\nCRITICAL PRICING & QUOTATION INSTRUC
   if (detected.length > 0) {
     const fallbackMsgs: AIChatMessageItem[] = [];
     for (const item of detected) {
-      if (item.type === 'services') fallbackMsgs.push(buildServicesMessage(siteConfig, cleanName));
+      if (item.type === 'specific_service' && specificServiceMsg) fallbackMsgs.push(specificServiceMsg);
+      else if (item.type === 'services') fallbackMsgs.push(buildServicesMessage(siteConfig, cleanName));
       else if (item.type === 'pricing') fallbackMsgs.push(buildPricingMessage(siteConfig, cleanName));
       else if (item.type === 'location') fallbackMsgs.push(buildLocationMessage(siteConfig));
       else if (item.type === 'contact') fallbackMsgs.push(buildContactMessage(siteConfig));
@@ -632,6 +722,15 @@ ${isPricingOrBookingRequested(lastMsg) ? `\nCRITICAL PRICING & QUOTATION INSTRUC
       handoffRequired: false,
       isForm: hasP,
       formType: hasP ? ('booking' as const) : undefined
+    };
+  }
+
+  if (specificServiceMsg) {
+    return {
+      text: specificServiceMsg.text,
+      messages: [specificServiceMsg],
+      handoffRequired: false,
+      isForm: false
     };
   }
 
